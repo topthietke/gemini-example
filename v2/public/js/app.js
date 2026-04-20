@@ -8,6 +8,7 @@
     /* ---- State ---- */
     const state = {
         history: [], // [{role, content}]
+        uploadedFiles: [], // [{name, type, base64, id}]
         loading: false,
     };
 
@@ -27,6 +28,9 @@
         tokenMeta: () => document.getElementById("tokenMeta"),
         menuToggle: () => document.getElementById("menuToggle"),
         sidebar: () => document.querySelector(".sidebar"),
+        uploadBtn: () => document.getElementById("uploadBtn"),
+        fileInput: () => document.getElementById("fileInput"),
+        filePreviews: () => document.getElementById("filePreviews"),
     };
 
     /* ---- Markdown-lite renderer ---- */
@@ -63,12 +67,26 @@
         if (welcome) welcome.style.display = "none";
 
         const isUser = role === "user";
+        const files = isUser ? state.uploadedFiles : [];
         const div = document.createElement("div");
         div.className = `msg ${isUser ? "user" : "ai"}`;
+
+        let filesHtml = '';
+        if (files.length > 0) {
+            filesHtml += '<div class="msg-files">';
+            files.forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    filesHtml += `<img src="data:${file.type};base64,${file.base64}" alt="${file.name}" class="msg-file-preview">`;
+                }
+            });
+            filesHtml += '</div>';
+        }
+
         div.innerHTML = `
       <div class="msg-avatar">${isUser ? "👤" : "✦"}</div>
       <div class="msg-body">
         <div class="msg-role">${isUser ? "Bạn" : "Gemini"}</div>
+        ${filesHtml}
         <div class="msg-text">${isUser ? escapeHtml(content).replace(/\n/g, "<br>") : renderMarkdown(content)}</div>
       </div>`;
         el.messagesList().appendChild(div);
@@ -114,11 +132,58 @@
         setTimeout(() => toast.remove(), 5000);
     }
 
+    /* ---- File Handling ---- */
+    function renderFilePreviews() {
+        const container = el.filePreviews();
+        container.innerHTML = '';
+        state.uploadedFiles.forEach(fileData => {
+            const previewItem = document.createElement('div');
+            previewItem.className = 'preview-item';
+
+            let media;
+            if (fileData.type.startsWith('image/')) {
+                media = document.createElement('img');
+            } else if (fileData.type.startsWith('video/')) {
+                media = document.createElement('video');
+                media.muted = true;
+            }
+            media.src = `data:${fileData.type};base64,${fileData.base64}`;
+            previewItem.appendChild(media);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'remove-file-btn';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.onclick = () => {
+                state.uploadedFiles = state.uploadedFiles.filter(f => f.id !== fileData.id);
+                renderFilePreviews();
+            };
+            previewItem.appendChild(removeBtn);
+            container.appendChild(previewItem);
+        });
+    }
+
+    function handleFileSelect(event) {
+        for (const file of event.target.files) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const fileData = {
+                    name: file.name,
+                    type: file.type,
+                    base64: e.target.result.split(',')[1], // Only base64 part
+                    id: Date.now() + Math.random()
+                };
+                state.uploadedFiles.push(fileData);
+                renderFilePreviews();
+            };
+            reader.readAsDataURL(file);
+        }
+        el.fileInput().value = ''; // Reset to allow re-selecting same file
+    }
+
     /* ---- Send message ---- */
     async function sendMessage() {
-        
         const prompt = el.promptInput().value.trim();
-        if (!prompt || state.loading) return;
+        if ((!prompt && state.uploadedFiles.length === 0) || state.loading) return;
 
         state.loading = true;
         el.sendBtn().disabled = true;
@@ -126,12 +191,19 @@
         el.promptInput().style.height = "auto";
 
         // Append user message
-        appendMessage("user", prompt);
+        const filesToSend = [...state.uploadedFiles];
+        appendMessage("user", prompt, filesToSend);
         showTyping();
+
+        // Clear files from state and UI after appending
+        state.uploadedFiles = [];
+        renderFilePreviews();
 
         // Build history to send
         const historyToSend = state.history.slice(-20); // last 20 turns
-        console.log(1111, window.CHAT_CONFIG.sendUrl);        
+        const model = document.getElementById('modelSelect').value;
+        const temp = parseFloat(el.tempSlider().value);
+        const system = el.systemPrompt().value.trim();
         try {
             const resp = await fetch(window.CHAT_CONFIG.sendUrl, {
                 method: "POST",
@@ -142,7 +214,11 @@
                 },
                 body: JSON.stringify({
                     prompt,
+                    model,
+                    temperature: temp,
+                    system,
                     history: historyToSend,
+                    files: filesToSend, // Send files data
                 }),
             });
 
@@ -156,7 +232,13 @@
             }
 
             // Store in history
-            state.history.push({ role: "user", content: prompt });
+            const userContent = [{ type: 'text', text: prompt }];
+            filesToSend.forEach(file => {
+                userContent.push({
+                    type: 'inline_data', part: { inline_data: { mime_type: file.type, data: file.base64 } }
+                });
+            });
+            state.history.push({ role: "user", parts: userContent });
             state.history.push({ role: "model", content: data.text });
 
             // Append AI reply
@@ -226,6 +308,11 @@
         // Auto-resize
         el.promptInput().addEventListener("input", (e) => autoResize(e.target));
 
+        // File upload
+        el.uploadBtn().addEventListener("click", () => el.fileInput().click());
+        el.fileInput().addEventListener("change", handleFileSelect);
+
+
         // Temp slider
         el.tempSlider().addEventListener("input", (e) => {
             el.tempValue().textContent = e.target.value;
@@ -240,6 +327,8 @@
             el.messagesList().innerHTML = "";
             const welcome = el.welcomeState();
             if (welcome) welcome.style.display = "";
+            state.uploadedFiles = [];
+            renderFilePreviews();
             el.tokenMeta().innerHTML = "";
         });
 
