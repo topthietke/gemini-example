@@ -13,20 +13,23 @@ class TextToVideoService
     protected Client $client;
     protected string $apiKey;
     protected string $veoUrl;
-    protected GeminiService $geminiService;
-
-    public function __construct(GeminiService $geminiService)
+    protected string $geminiKey;
+    protected string $chatModel;
+    protected string $baseUrl;
+    public function __construct()
     {
-        $this->apiKey    = config('gemini.video_api_key') ?: config('gemini.api_key');
-        $this->veoUrl    = config('gemini.veo_api_url', 'https://generativelanguage.googleapis.com/v1beta');
-        $this->geminiService = $geminiService;
-
+        $this->baseUrl   = config('gemini.base_url');
+        $this->apiKey    = config('gemini.video_api_key') ?? config('gemini.api_key');
+        $this->veoUrl    = config('gemini.veo_api_url', 'https: //generativelanguage.googleapis.com/v1beta');
+        $this->geminiKey = config('gemini.api_key');
+        $this->chatModel = config('gemini.chat_model');
         $this->client = new Client([
             'timeout' => 300,
+            'verify'  => $this->getCACertPath(),
             'headers' => [
-                'Content-Type'   => 'application/json',
-                'x-goog-api-key' => $this->apiKey,
-            ],
+                    'Content-Type'   => 'application/json',
+                    'x-goog-api-key' => $this->apiKey,
+                ],
         ]);
     }
 
@@ -136,6 +139,15 @@ class TextToVideoService
     protected function generateVideoFallback(string $prompt, string $style, string $aspectRatio, int $duration): array
     {
         try {
+            $geminiClient = new Client([
+                'timeout' => 60,
+                'verify'  => $this->getCACertPath(),
+                'headers' => [
+                    'Content-Type'   => 'application/json',
+                    'x-goog-api-key' => $this->geminiKey,
+                ],
+            ]);
+
             $scriptPrompt = "Bạn là một đạo diễn video chuyên nghiệp. Tạo một storyboard chi tiết cho video với prompt sau:\n\n"
                 . "**Prompt:** {$prompt}\n"
                 . "**Style:** {$style}\n"
@@ -149,11 +161,23 @@ class TextToVideoService
                 . "5. Transition effects\n\n"
                 . "Trả lời bằng tiếng Việt, format markdown đẹp.";
 
-            $geminiResponse = $this->geminiService->chat($scriptPrompt);
-            $script = 'Không thể tạo script.';
-            if ($geminiResponse['success']) {
-                $script = $geminiResponse['text'];
-            }
+            // Gemini Chat API  
+            $url =  $this->baseUrl . "/models/{$this->chatModel}:generateContent";           
+
+            $response = $geminiClient->post(
+                $url,
+                [
+                    'json' => [
+                        'contents' => [
+                            ['role' => 'user', 'parts' => [['text' => $scriptPrompt]]],
+                        ],
+                        'generationConfig' => ['maxOutputTokens' => 2048],
+                    ],
+                ]
+            );
+
+            $data   = json_decode($response->getBody()->getContents(), true);
+            $script = $data['candidates'][0]['content']['parts'][0]['text'] ?? 'Không thể tạo script.';
 
             return [
                 'success'  => true,
@@ -164,7 +188,7 @@ class TextToVideoService
                 'note'     => 'Để dùng tính năng tạo video thật, bạn cần đăng ký Google Veo API allowlist tại: https://deepmind.google/technologies/veo/',
             ];
 
-        } catch (RequestException $e) {
+        } catch (RequestException $e) {            
             return [
                 'success' => false,
                 'error'   => 'Lỗi kết nối API: ' . $this->parseError($e),
@@ -173,6 +197,20 @@ class TextToVideoService
     }
 
     /**
+     * Enhance prompt with style keywords
+     */
+    private function getCACertPath(): string|bool
+    {
+        if ($custom = config('gemini.ssl_ca_cert')) return $custom;
+        $s = storage_path('app/cacert.pem');
+        if (file_exists($s)) return $s;
+        $c = ini_get('curl.cainfo');
+        if ($c && file_exists($c)) return $c;
+        if (config('gemini.ssl_verify') === false) return false;
+        return true;
+    }
+
+    protected function enhancePrompt(string $prompt, string $style, array $params): string
     {
         $styleMap = [
             'cinematic'    => 'cinematic, 4K, professional filmmaking, dramatic lighting, shallow depth of field',
