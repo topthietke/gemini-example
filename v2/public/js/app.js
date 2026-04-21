@@ -205,6 +205,8 @@
         const temp = parseFloat(el.tempSlider().value);
         const system = el.systemPrompt().value.trim();
         try {
+            console.log('url: ', window.CHAT_CONFIG.sendUrl);
+            return;
             const resp = await fetch(window.CHAT_CONFIG.sendUrl, {
                 method: "POST",
                 headers: {

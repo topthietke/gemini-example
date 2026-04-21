@@ -1,163 +1,185 @@
-https://aistudio.google.com
+# 🤖 Gemini Studio — Laravel AI Platform
 
-# 🤖 Gemini Chat — Laravel + Google Gemini API
-
-Ứng dụng chat AI được xây dựng bằng Laravel, kết nối trực tiếp với Google Gemini API.
-
-![Preview](preview.png)
-
----
-
-## ✨ Tính năng
-
-- 💬 Chat real-time với Google Gemini AI
-- 🔄 Lưu lịch sử hội thoại trong phiên (multi-turn conversation)
-- 🎛️ Tuỳ chỉnh model, nhiệt độ (temperature), system prompt
-- ⚡ Kiểm tra kết nối API
-- 📊 Hiển thị số token đã dùng
-- 📱 Responsive — hỗ trợ mobile
-- 🌙 Dark mode mặc định
-- 🔐 CSRF protection
+Ứng dụng Laravel tích hợp **Google Gemini AI** với các tính năng:
+- 💬 Chat AI với Gemini (text, đa lượt)
+- 📎 Upload & phân tích file (ảnh, PDF, video, audio)
+- 🎬 Tạo video từ văn bản (Google Veo 2)
 
 ---
 
 ## 📋 Yêu cầu
 
-- PHP >= 8.2
-- Composer
-- Laravel 11
-- Google Gemini API Key ([lấy tại đây](https://aistudio.google.com/app/apikey))
+| Thành phần | Phiên bản |
+|---|---|
+| PHP | ≥ 8.1 |
+| Composer | ≥ 2.0 |
+| Laravel | 10.x |
+| Google Gemini API Key | Required |
 
 ---
 
-## 🚀 Cài đặt
-
-### 1. Clone hoặc tải dự án
+## 🚀 Cài đặt nhanh
 
 ```bash
-git clone <your-repo-url> gemini-chat
-cd gemini-chat
-```
+# 1. Clone hoặc giải nén project
+cd gemini-studio
 
-### 2. Cài dependencies
+# 2. Chạy setup script
+chmod +x setup.sh
+./setup.sh
 
-```bash
-composer install
-```
+# 3. Thêm Gemini API Key vào .env
+nano .env
+# → GEMINI_API_KEY=AIza...
 
-### 3. Cấu hình môi trường
-
-```bash
-cp .env.example .env
-php artisan key:generate
-```
-
-### 4. Thêm Gemini API Key vào `.env`
-
-```env
-GEMINI_API_KEY=your_actual_api_key_here
-GEMINI_MODEL=gemini-2.0-flash
-GEMINI_TEMPERATURE=0.7
-GEMINI_MAX_TOKENS=2048
-```
-
-> 💡 **Lấy API Key miễn phí tại:** https://aistudio.google.com/app/apikey
-
-### 5. Chạy ứng dụng
-
-```bash
+# 4. Khởi động
 php artisan serve
 ```
 
-Mở trình duyệt tại: **http://localhost:8000**
+Mở trình duyệt: **http://localhost:8000**
 
 ---
 
-## 📁 Cấu trúc dự án
+## ⚙️ Cấu hình `.env`
+
+```env
+# ============================
+# BẮT BUỘC
+# ============================
+GEMINI_API_KEY=AIzaSy...         # Lấy tại https://aistudio.google.com/app/apikey
+
+# ============================
+# TÙY CHỌN
+# ============================
+GEMINI_CHAT_MODEL=gemini-1.5-pro  # hoặc gemini-1.5-flash (nhanh hơn, rẻ hơn)
+GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+
+# Google Veo (Text-to-Video) - Cần đăng ký allowlist riêng
+GOOGLE_VIDEO_API_KEY=AIzaSy...
+```
+
+---
+
+## 🗺️ Cấu trúc Project
 
 ```
-gemini-laravel/
+gemini-studio/
 ├── app/
-│   ├── Http/
-│   │   └── Controllers/
-│   │       └── ChatController.php      # Xử lý request chat
+│   ├── Http/Controllers/
+│   │   ├── ChatController.php       # Chat + File upload
+│   │   └── VideoController.php      # Text-to-Video
 │   └── Services/
-│       └── GeminiService.php           # Tích hợp Gemini API
+│       ├── GeminiService.php        # Gemini API wrapper
+│       └── TextToVideoService.php   # Veo API + fallback
 ├── config/
-│   └── gemini.php                      # Cấu hình Gemini
-├── resources/
-│   └── views/
-│       ├── layouts/
-│       │   └── app.blade.php           # Layout chính
-│       └── chat/
-│           └── index.blade.php         # Giao diện chat
+│   └── gemini.php                   # Cấu hình API
+├── resources/views/
+│   ├── layouts/app.blade.php        # Master layout
+│   ├── chat/index.blade.php         # Giao diện Chat
+│   └── video/index.blade.php        # Giao diện Video
 ├── routes/
-│   └── web.php                         # Định tuyến
-├── public/
-│   ├── css/app.css                     # Stylesheet
-│   └── js/app.js                       # Frontend logic
-└── .env.example                        # Mẫu cấu hình
+│   └── web.php                      # Định tuyến
+├── .env.example
+└── setup.sh
 ```
 
 ---
 
 ## 🔌 API Endpoints
 
-| Method | URL | Mô tả |
-|--------|-----|-------|
-| GET | `/` | Trang chat chính |
-| POST | `/chat/send` | Gửi tin nhắn |
-| GET | `/chat/test-connection` | Kiểm tra kết nối API |
+### Chat
+| Method | Endpoint | Mô tả |
+|---|---|---|
+| `GET` | `/chat` | Giao diện chat |
+| `POST` | `/api/chat/message` | Gửi tin nhắn text |
+| `POST` | `/api/chat/upload` | Gửi tin nhắn kèm file |
+| `POST` | `/api/chat/stream` | Chat streaming (SSE) |
+| `GET` | `/api/models` | Danh sách models |
+
+### Video
+| Method | Endpoint | Mô tả |
+|---|---|---|
+| `GET` | `/video` | Giao diện tạo video |
+| `POST` | `/api/video/generate` | Tạo video từ text |
+| `GET` | `/api/video/status/{op}` | Kiểm tra trạng thái |
 
 ---
 
-## ⚙️ Cấu hình nâng cao
+## 📖 Ví dụ API
 
-Chỉnh sửa file `config/gemini.php` hoặc các biến trong `.env`:
+### Gửi tin nhắn
+```bash
+curl -X POST http://localhost:8000/api/chat/message \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-TOKEN: {token}" \
+  -d '{"message": "Xin chào Gemini!", "history": []}'
+```
 
-```env
-# Model mặc định
-GEMINI_MODEL=gemini-2.0-flash        # Nhanh, tiết kiệm
-# GEMINI_MODEL=gemini-1.5-pro        # Mạnh hơn, chậm hơn
-# GEMINI_MODEL=gemini-1.5-flash      # Cân bằng
+### Upload file
+```bash
+curl -X POST http://localhost:8000/api/chat/upload \
+  -F "file=@/path/to/image.jpg" \
+  -F "message=Mô tả ảnh này"
+```
 
-# Độ sáng tạo (0.0 = chính xác, 1.0 = sáng tạo)
-GEMINI_TEMPERATURE=0.7
-
-# Giới hạn token đầu ra
-GEMINI_MAX_TOKENS=2048
+### Tạo video
+```bash
+curl -X POST http://localhost:8000/api/video/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Một con sóc đang nhảy trên cánh rừng mùa thu",
+    "style": "cinematic",
+    "aspect_ratio": "16:9",
+    "duration": 8
+  }'
 ```
 
 ---
 
-## 📦 Models Gemini hỗ trợ
+## 🎬 Về Google Veo (Text-to-Video)
 
-| Model | Đặc điểm |
-|-------|---------|
-| `gemini-2.0-flash` | Nhanh, hiệu quả — **khuyến nghị** |
-| `gemini-1.5-pro` | Mạnh mẽ, context dài |
-| `gemini-1.5-flash` | Cân bằng tốc độ/chất lượng |
+**Google Veo 2** là mô hình tạo video AI tiên tiến nhất của Google. Hiện tại API đang trong giai đoạn **private preview** và yêu cầu đăng ký allowlist.
 
----
+Khi Veo API chưa khả dụng, hệ thống sẽ tự động **fallback sang Gemini** để tạo storyboard/script chi tiết.
 
-## 🛠️ Mở rộng
-
-### Thêm streaming response
-
-Chỉnh sửa `GeminiService::generateContent()` để dùng endpoint `:streamGenerateContent`.
-
-### Lưu lịch sử vào database
-
-1. Tạo migration cho bảng `conversations` và `messages`
-2. Cập nhật `ChatController` để lưu/load history
-3. Thêm authentication nếu cần
-
-### Thêm upload ảnh (Multimodal)
-
-Gemini hỗ trợ gửi ảnh — cập nhật `parts` trong request để thêm `inlineData`.
+→ **Đăng ký Veo API**: https://deepmind.google/technologies/veo/
 
 ---
 
-## 📄 License
+## 📁 File hỗ trợ
 
-MIT License — Tự do sử dụng và chỉnh sửa.
+| Loại | Định dạng | Ghi chú |
+|---|---|---|
+| Ảnh | JPG, PNG, GIF, WebP | Tối đa 20MB |
+| Tài liệu | PDF, TXT, DOCX | |
+| Video | MP4, MOV | Dùng Gemini File API |
+| Audio | MP3, WAV, OGG | Dùng Gemini File API |
+
+File > 5MB sẽ tự động dùng **Gemini File API** (upload resumable).
+
+---
+
+## 🔑 Lấy API Key
+
+1. Truy cập: https://aistudio.google.com/app/apikey
+2. Đăng nhập Google Account
+3. Tạo API Key mới
+4. Paste vào `.env`: `GEMINI_API_KEY=your_key`
+
+**Gemini 1.5 Pro** có free tier hào phóng — phù hợp để thử nghiệm.
+
+---
+
+## 🛠️ Phát triển thêm
+
+Một số hướng mở rộng:
+- [ ] Authentication (Laravel Sanctum)
+- [ ] Lưu lịch sử chat vào database
+- [ ] Rate limiting
+- [ ] Queue jobs cho video generation
+- [ ] Multi-user support
+- [ ] Export chat history
+
+---
+
+Made with ❤️ by Tutn | Powered by Google Gemini
